@@ -43,3 +43,27 @@ class Open3DHandler(BasePointCloudHandler):
     def write_point_cloud(self, path: Path, pointcloud: "PointCloud") -> None:
         super().write_point_cloud(path, pointcloud)
         o3d.io.write_point_cloud(str(path), self.to_open3d_point_cloud(pointcloud))
+
+    def read_triangle_mesh(
+        self, path: Path
+    ) -> Tuple[npt.NDArray, npt.NDArray, Optional[npt.NDArray]]:
+        mesh = o3d.io.read_triangle_mesh(str(path))
+
+        mesh.compute_vertex_normals()  # Ensure normals are computed for shading
+
+        if not mesh.has_vertices():
+            raise ValueError(f"No vertices in mesh: {path}")
+
+        vertices = np.asarray(mesh.vertices).astype("float32")
+
+        triangles = None
+        if mesh.has_triangles():
+            triangles = np.asarray(mesh.triangles).astype("int32")
+
+        colors = None
+        if mesh.has_vertex_colors():
+            colors = np.asarray(mesh.vertex_colors).astype("float32")
+
+        normals = np.asarray(mesh.vertex_normals).astype(np.float32)
+        
+        return vertices, colors, triangles, normals

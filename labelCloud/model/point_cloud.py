@@ -52,6 +52,7 @@ class PointCloud(object):
         points: npt.NDArray[np.float32],
         colors: Optional[np.ndarray] = None,
         segmentation_labels: Optional[npt.NDArray[np.int8]] = None,
+        faces: Optional[npt.NDArray[np.uint32]] = None,
         init_translation: Optional[Tuple[float, float, float]] = None,
         init_rotation: Optional[Tuple[float, float, float]] = None,
         write_buffer: bool = True,
@@ -60,7 +61,7 @@ class PointCloud(object):
         self.path = path
         self.points = points
         self.colors = colors if type(colors) == np.ndarray and len(colors) > 0 else None
-
+        self.faces = faces
         self.labels = None
         if LabelConfig().type == LabelingMode.SEMANTIC_SEGMENTATION:
             self.labels = segmentation_labels
@@ -75,6 +76,8 @@ class PointCloud(object):
             self.center, self.pcd_mins, self.pcd_maxs
         )
         self.init_rotation: Rotations3D = init_rotation or tuple([0, 0, 0])  # type: ignore
+
+        self.render_mode = "mesh"  # or "mesh"
 
         # Point cloud transformations
         self.trans_x, self.trans_y, self.trans_z = self.init_translation
@@ -127,6 +130,16 @@ class PointCloud(object):
             GL.glBufferData(GL.GL_ARRAY_BUFFER, data.nbytes, data, GL.GL_DYNAMIC_DRAW)
             GL.glBindBuffer(GL.GL_ARRAY_BUFFER, 0)
 
+        if self.faces is not None:
+            self.index_vbo = GL.glGenBuffers(1)
+            GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, self.index_vbo)
+            GL.glBufferData(
+                GL.GL_ELEMENT_ARRAY_BUFFER,
+                self.faces.nbytes,
+                self.faces,
+                GL.GL_STATIC_DRAW
+            )
+    GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, 0)
     @property
     def label_colors(self) -> npt.NDArray[np.float32]:
         """blend the points with label color map"""
@@ -182,6 +195,7 @@ class PointCloud(object):
             points,
             colors,
             labels,
+            None,
             init_translation,
             init_rotation,
             write_buffer,
@@ -402,6 +416,45 @@ class PointCloud(object):
         # Release the buffer binding
         GL.glBindBuffer(GL.GL_ARRAY_BUFFER, 0)
 
+        
+    def draw_mesh(self) -> None:
+        if self.faces is None:
+            return
+
+        self.set_gl_background()
+        stride = 3 * SIZE_OF_FLOAT
+
+        # Enable depth test (important for meshes)
+        GL.glEnable(GL.GL_DEPTH_TEST)
+
+        # Vertex positions
+        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.position_vbo)
+        GL.glEnableClientState(GL.GL_VERTEX_ARRAY)
+        GL.glVertexPointer(3, GL.GL_FLOAT, stride, None)
+
+        # Colors
+        color_vbo = self.label_vbo if self.color_with_label else self.color_vbo
+        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, color_vbo)
+        GL.glEnableClientState(GL.GL_COLOR_ARRAY)
+        GL.glColorPointer(3, GL.GL_FLOAT, stride, None)
+
+        # Bind index buffer
+        GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, self.index_vbo)
+
+        # Draw triangles
+        GL.glDrawElements(
+            GL.GL_TRIANGLES,
+            self.faces.size,
+            GL.GL_UNSIGNED_INT,
+            None
+        )
+
+        # Cleanup
+        GL.glDisableClientState(GL.GL_VERTEX_ARRAY)
+        GL.glDisableClientState(GL.GL_COLOR_ARRAY)
+        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, 0)
+        GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, 0)
+        
     def reset_perspective(self) -> None:
         self.trans_x, self.trans_y, self.trans_z = self.init_rotation
         self.rot_x, self.rot_y, self.rot_z = self.init_rotation

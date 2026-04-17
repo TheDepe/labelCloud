@@ -18,6 +18,7 @@ from ..utils import oglhelper
 
 from ..model.bbox import BBox
 from ..model.point import Point
+from ..model.mesh import Mesh
 
 @contextmanager
 def ignore_depth_mask():
@@ -60,6 +61,7 @@ class GLWidget(QtOpenGL.QGLWidget):
         self.drawing_mode: DrawingManager = None  # type: ignore
         self.align_mode: Union[AlignMode, None] = None
 
+        self.mesh: Optional[Mesh] = None
         self.current_label_text: Optional[str] = None
 
     def set_pointcloud_controller(self, pcd_manager: PointCloudManger) -> None:
@@ -69,6 +71,11 @@ class GLWidget(QtOpenGL.QGLWidget):
     def set_unified_annotation_controller(self, unified_annotation_controller: UnifiedAnnotationController ):
         self.unified_annotation_controller = unified_annotation_controller
 
+    def set_mesh(self, mesh: Optional[Mesh]) -> None:   # <-- add this
+        self.mesh = mesh
+        logging.info(f"set_mesh called with: {mesh}")  # <-- add this
+        # if mesh is not None:
+        #     mesh.create_buffers()  # <-- GL context is active at this point
 
     # QGLWIDGET METHODS
 
@@ -85,6 +92,8 @@ class GLWidget(QtOpenGL.QGLWidget):
 
         # Must be written again, due to buffer clearing
         self.pcd_manager.pointcloud.create_buffers()  # type: ignore
+        if self.mesh is not None:          
+            self.mesh.create_buffers()
 
     def resizeGL(self, width, height) -> None:
         logging.info("Resized widget.")
@@ -125,14 +134,17 @@ class GLWidget(QtOpenGL.QGLWidget):
         GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
         GL.glPushMatrix()  # push the current matrix to the current stack
 
-
-
         if config.getboolean("USER_INTERFACE", "scaled_point_size"):
             # Draw point cloud
             self.pcd_manager.pointcloud.draw_pointcloud()  # type: ignore
         else:
             # Draw point cloud
             self.pcd_manager.pointcloud.draw_pointcloud_()  # type: ignore
+
+        if self.mesh is not None and self.mesh.has_buffers:
+            print(f"DEBUG || Drawing mesh with {len(self.mesh.vertices)} vertices "
+                f"and {len(self.mesh.triangles)} faces.")  # .triangles not .faces
+            self.mesh.draw()
 
         # Get actual matrices for click unprojection
         self.modelview = GL.glGetDoublev(GL.GL_MODELVIEW_MATRIX)

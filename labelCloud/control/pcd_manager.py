@@ -15,7 +15,7 @@ import pkg_resources
 from ..definitions import LabelingMode, Point3D
 from ..io.labels.config import LabelConfig
 from ..io.pointclouds import BasePointCloudHandler, Open3DHandler
-from ..model import BBox, Perspective, PointCloud, Point
+from ..model import BBox, Perspective, PointCloud, Point, Mesh
 from ..utils.logger import blue, green, print_column
 from .config_manager import config
 from .label_manager import LabelManager
@@ -42,6 +42,8 @@ class PointCloudManger(object):
 
         # Point cloud control
         self.pointcloud: Optional[PointCloud] = None
+        self.mesh: Optional[Mesh] = None 
+
         # TODO: this should integrate with the new label definition setup.
         self.collected_object_classes: Set[str] = set()
         self.saved_perspective: Optional[Perspective] = None
@@ -55,6 +57,16 @@ class PointCloudManger(object):
         if self.current_id >= 0:
             return self.pcd_path.name
         return None
+
+    def _try_load_mesh(self) -> None:
+        """Attempt to load a mesh from the current pcd_path. Sets self.mesh to None if not found."""
+        mesh = Mesh.from_file(self.pcd_path)
+        self.mesh = mesh
+        self.view.gl_widget.set_mesh(mesh)
+        if mesh:
+            logging.info(f"Loaded mesh alongside point cloud from {self.pcd_path.name}")
+        else:
+            logging.info(f"No mesh found for {self.pcd_path.name}")  # <-- add this
 
     def read_pointcloud_folder(self) -> None:
         """Checks point cloud folder and sets self.pcds to all valid point cloud file names."""
@@ -106,6 +118,9 @@ class PointCloudManger(object):
                 self.saved_perspective,
                 write_buffer=self.pointcloud is not None,
             )
+            self._try_load_mesh()  # <-- add this
+            if self.mesh is not None:
+                self.mesh.create_buffers()
             self.update_pcd_infos()
         else:
             logging.warning("No point clouds left!")
@@ -118,20 +133,28 @@ class PointCloudManger(object):
             self.pointcloud = PointCloud.from_file(
                 self.pcd_path,
                 self.saved_perspective,
-                write_buffer=self.pointcloud is not None,
+                write_buffer=self.pointcloud is not None ,
             )
+            self._try_load_mesh()
+            if self.mesh is not None:
+                self.mesh.create_buffers()
             self.update_pcd_infos()
         else:
             logging.warning("This point cloud does not exists!")
 
     def get_prev_pcd(self) -> None:
-        logging.info("Loading previous point cloud...")
+        logging.info("Loading previous point cloud/mesh...")
         if self.current_id > 0:
             self.current_id -= 1
             self.save_current_perspective()
             self.pointcloud = PointCloud.from_file(
-                self.pcd_path, self.saved_perspective
+                self.pcd_path, self.saved_perspective,
+                write_buffer=(self.pointcloud is not None)
             )
+            self._try_load_mesh()
+            if self.mesh is not None:
+                self.mesh.create_buffers()
+            logging.info("Loaded mesh")
             self.update_pcd_infos()
         else:
             raise Exception("No point cloud left for loading!")
@@ -139,7 +162,7 @@ class PointCloudManger(object):
     def populate_class_dropdown(self) -> None:
         # Add point label list
         self.view.current_class_dropdown.clear()
-        assert self.pointcloud is not None
+        assert (self.pointcloud is not None or self.mesh is not None)
 
         for label_class in LabelConfig().classes:
 
