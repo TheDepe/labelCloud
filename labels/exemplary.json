@@ -1,0 +1,125 @@
+{
+	"folder": "pointclouds",
+	"filename": "exemplary.ply",
+	"path": "pointclouds/exemplary.ply",
+	"annotator": "Claudious Nhemwa",
+	"objects": [
+		{
+			"name": "lfront_foot_back",
+			"point": [
+				0.11713116,
+				-0.03993103,
+				0.08589802
+			],
+			"point_idx": 85896
+		},
+		{
+			"name": "lfront_foot_tip",
+			"point": [
+				0.33687237,
+				-0.3230918,
+				-0.57799441
+			],
+			"point_idx": 135704
+		},
+		{
+			"name": "rfront_foot_tip",
+			"point": [
+				-0.00353884,
+				0.10450072,
+				-0.57638794
+			],
+			"point_idx": 111703
+		},
+		{
+			"name": "lfront_sesamoid",
+			"point": [
+				-1.03525138,
+				-0.24520458,
+				-0.54061812
+			],
+			"point_idx": 138596
+		},
+		{
+			"name": "rfront_sesamoid",
+			"point": [
+				-0.76626122,
+				0.05778781,
+				-0.55992854
+			],
+			"point_idx": 97392
+		},
+		{
+			"name": "lback_foot_tip",
+			"point": [
+				-0.91209501,
+				-0.00107743,
+				-0.27284199
+			],
+			"point_idx": 163169
+		},
+		{
+			"name": "rear_tip",
+			"point": [
+				-1.21060014,
+				-0.21927281,
+				0.0416413
+			],
+			"point_idx": 161183
+		},
+		{
+			"name": "rear_tip",
+			"point": [
+				-0.30966288,
+				1.43833423,
+				1.69181812
+			],
+			"point_idx": 157848
+		},
+		{
+			"name": "unassigned",
+			"point": [
+				0.03603576,
+				1.4823103,
+				1.73805821
+			],
+			"point_idx": 166535
+		},
+		{
+			"name": "unassigned",
+			"point": [
+				-0.37949875,
+				0.50793439,
+				1.29709375
+			],
+			"point_idx": 48788
+		},
+		{
+			"name": "unassigned",
+			"point": [
+				-0.33797503,
+				0.63720345,
+				0.74061722
+			],
+			"point_idx": 89922
+		},
+		{
+			"name": "unassigned",
+			"point": [
+				-0.46798605,
+				0.31356868,
+				0.86989826
+			],
+			"point_idx": 46698
+		},
+		{
+			"name": "unassigned",
+			"point": [
+				-0.32907757,
+				-0.0925259,
+				1.52235341
+			],
+			"point_idx": 180408
+		}
+	]
+}

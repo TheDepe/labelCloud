@@ -1,0 +1,344 @@
+import traceback
+
+import pkg_resources
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QIcon
+from PyQt5.QtWidgets import (
+    QComboBox,
+    QDesktopWidget,
+    QDialog,
+    QDialogButtonBox,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QVBoxLayout,
+    QLineEdit,
+    QSpacerItem,
+    QSizePolicy,
+    QCheckBox
+)
+
+from ...io.labels.config import LabelConfig
+import webbrowser
+import os
+from ...io.labels.exceptions import (
+    DefaultIdMismatchException,
+    LabelClassNameEmpty,
+    LabelIdsNotUniqueException,
+    ZeroLabelException,
+)
+from .class_list import ClassList
+from .labeling_mode import SelectLabelingMode
+
+
+class StartupDialog(QDialog):
+    def __init__(self, parent=None, mode="startup") -> None:
+        super().__init__(parent)
+        self.parent_gui = parent
+        self.mode = mode
+
+        
+        if self.mode == "startup":
+            self.setWindowTitle("Welcome to labelCloud")
+        else:
+            self.setWindowTitle("Add and Edit Labels")
+
+        screen_size = QDesktopWidget().availableGeometry(self).size()
+        self.resize(screen_size * 0.5)
+        self.setWindowIcon(
+            QIcon(
+                pkg_resources.resource_filename(
+                    "labelCloud.resources.icons", "labelCloud.ico"
+                )
+            )
+        )
+        self.setContentsMargins(50, 10, 50, 10)
+
+        main_layout = QVBoxLayout()
+        main_layout.setSpacing(15)
+        main_layout.setAlignment(Qt.AlignTop)
+        self.setLayout(main_layout)
+
+        # 1. Row: Selection of labeling mode via checkable buttons
+        self.button_semantic_segmentation: QPushButton
+        if self.mode == "startup":
+            self.add_labeling_mode_row(main_layout)
+
+        # 2. Row: Definition of class labels
+        self.add_class_definition_rows(main_layout)
+        
+
+        
+        # 3. Row: Select label export format
+        self.add_default_and_export_format(main_layout)
+
+        # 3.5 Row: User name input
+        self.add_user_row(main_layout)
+
+        # 4. Row: Link to open the JSON config file
+        self.add_json_link(main_layout)
+
+        # 5. Row: Buttons to save or cancel
+        self.buttonBox = QDialogButtonBox(QDialogButtonBox.Save)
+        self.buttonBox.accepted.connect(self.save)
+        self.buttonBox.rejected.connect(self.reject)
+        
+        save_button = self.buttonBox.button(QDialogButtonBox.Save)
+        if save_button:
+            save_button.setText("Continue" if self.mode == "startup" else "Save")
+
+        main_layout.addWidget(self.buttonBox)
+
+    # ---------------------------------------------------------------------------- #
+    #                                     SETUP                                    #
+    # ---------------------------------------------------------------------------- #
+
+    def add_labeling_mode_row(self, parent_layout: QVBoxLayout) -> None:
+        """
+        Add a row to select the labeling mode with two exclusive buttons.
+
+         - the selected mode influences the available label export formats
+        """
+
+        # Commented out label and  buttons as to meke the user stick to the same label
+        #parent_layout.addWidget(QLabel("Select labeling mode:"))
+
+        self.select_labeling_mode = SelectLabelingMode()
+        self.select_labeling_mode.changed.connect(self._update_label_formats)
+        #parent_layout.addWidget(self.select_labeling_mode)
+
+    def _update_label_formats(self) -> None:
+        self.label_export_format.clear()
+        self.label_export_format.addItems(
+            self.select_labeling_mode.available_label_formats
+        )
+
+    def add_default_and_export_format(self, parent_layout: QVBoxLayout) -> None:
+        """
+        Add a row to select the default class and the label export format.
+        """
+        row = QHBoxLayout()
+
+        row.addWidget(QLabel("Default class:"))
+
+        self.default_label = QComboBox()
+        self.default_label.addItems(
+            [class_label.name for class_label in LabelConfig().classes]
+        )
+        self.default_label.setCurrentText(LabelConfig().get_default_class_name())
+        row.addWidget(self.default_label, 2)
+
+        row.addSpacing(100)
+
+       
+
+        self.label_export_format = QComboBox()
+        if self.mode == "startup":
+            row.addWidget(QLabel("Label export format:"))
+
+            self._update_label_formats()
+            self.label_export_format.setCurrentText(LabelConfig().format)
+            row.addWidget(self.label_export_format, 2)
+
+        parent_layout.addLayout(row)
+
+    def _on_class_list_changed(self):
+        old_index = self.default_label.currentIndex()
+        old_text = self.default_label.currentText()
+        old_count = self.default_label.count()
+
+        self.default_label.clear()
+        self.default_label.addItems(
+            [class_label.name for class_label in self.label_list.get_class_configs()]
+        )
+
+        if old_count == self.default_label.count():  # only renaming
+            self.default_label.setCurrentIndex(old_index)
+        else:
+            self.default_label.setCurrentText(old_text)
+
+    def add_class_definition_rows(self, parent_layout: QVBoxLayout) -> None:
+        scroll_area = QScrollArea()
+        self.label_list = ClassList(scroll_area)
+
+        self.label_list.changed.connect(self._on_class_list_changed)
+
+        parent_layout.addWidget(QLabel("Change class labels:"))
+
+        parent_layout.addWidget(
+            self.label_list.select_all_sessions,
+            alignment=Qt.AlignRight
+            )
+
+        # ✅ Column headers
+        header = QHBoxLayout()
+        header.setSpacing(15)
+
+        header.addWidget(QLabel("ID"))
+        header.addWidget(QLabel("Name"), stretch=2)
+        header.addWidget(QLabel("Color"))
+        header.addWidget(QLabel(""))  # delete column spacer
+        header.addWidget(QLabel("Select"))
+
+        parent_layout.addLayout(header)
+
+    
+
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setWidget(self.label_list)
+        scroll_area.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        parent_layout.addWidget(scroll_area)
+
+        button_add_label = QPushButton(text="Add new label")
+        button_add_label.clicked.connect(lambda: self.label_list.add_label())
+        parent_layout.addWidget(button_add_label)
+
+    # ---------------------------------------------------------------------------- #
+    #                                     LOGIC                                    #
+    # ---------------------------------------------------------------------------- #
+
+    def _populate_label_config(self) -> None:
+        if self.mode == "startup":
+            LabelConfig().type = self.select_labeling_mode.selected_labeling_mode
+            LabelConfig().set_label_format(self.label_export_format.currentText())
+
+        LabelConfig().classes = self.label_list.get_class_configs()
+
+        LabelConfig().set_default_class(self.default_label.currentText())
+            
+        user_name = self.user_name_combo.currentText().strip()
+        # Store user name as metadata (extend LabelConfig to support this if not already)
+        LabelConfig().set_user_name(user_name=user_name)
+        LabelConfig().add_user_to_history(user_name=user_name)
+
+
+
+    def _save_class_labels(self) -> None:
+        LabelConfig().validate()
+        LabelConfig().save_config()
+
+    def save(self):
+        self._populate_label_config()
+
+        title = "Something went wrong"
+        text = ""
+        informative_text = ""
+        icon = QMessageBox.Critical
+        buttons = QMessageBox.Cancel
+        msg = QMessageBox()
+
+        try:
+            self._save_class_labels()
+            self.accept()
+            return
+
+        except DefaultIdMismatchException as e:
+            text = e.__class__.__name__
+            informative_text = (
+                str(e)
+                + f" Do you want to overwrite the default to the first label `{LabelConfig().classes[0].id}`?"
+            )
+            icon = QMessageBox.Question
+            buttons |= QMessageBox.Ok
+            msg.accepted.connect(LabelConfig().set_first_as_default)
+
+        except (
+            ZeroLabelException,
+            LabelIdsNotUniqueException,
+            LabelClassNameEmpty,
+        ) as e:
+            text = e.__class__.__name__
+            informative_text = str(e)
+
+        except Exception as e:
+            text = e.__class__.__name__
+            informative_text = traceback.format_exc()
+
+        msg.setWindowTitle(title)
+        msg.setText(text)
+        msg.setInformativeText(informative_text)
+        msg.setIcon(icon)
+        msg.setStandardButtons(buttons)
+        msg.setDefaultButton(QMessageBox.Cancel)
+
+        msg.exec_()
+
+
+
+    def add_user_row(self, parent_layout: QVBoxLayout) -> None:
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Annotator:"))
+
+        # ComboBox with editable field
+        self.user_name_combo = QComboBox()
+        self.user_name_combo.setEditable(True)
+        self.user_name_combo.setInsertPolicy(QComboBox.InsertAtTop)
+
+        # Load list of previous annotators from LabelConfig (extend LabelConfig to support this)
+        previous_users = LabelConfig().get_all_users()  # returns list[str]
+        current_user = LabelConfig().get_user_name()    # last/current annotator
+
+        # Populate the combo box
+        if previous_users:
+            self.user_name_combo.addItems(previous_users)
+
+        # Set current user as default selection (or first entry if missing)
+        if current_user:
+            index = self.user_name_combo.findText(current_user)
+            if index >= 0:
+                self.user_name_combo.setCurrentIndex(index)
+            else:
+                self.user_name_combo.insertItem(0, current_user)
+                self.user_name_combo.setCurrentIndex(0)
+
+        row.addWidget(self.user_name_combo, 2)
+        parent_layout.addLayout(row)
+
+    
+
+    def add_json_link(self, parent_layout: QVBoxLayout) -> None:
+        """
+        Adds a link-like button at the bottom to open the JSON config file.
+        """
+        row = QHBoxLayout()
+
+        
+        self.link_button = QPushButton("Open class config JSON")
+        self.link_button.setFlat(True)  # makes it look like a link
+        self.link_button.setStyleSheet("color: blue; text-decoration: underline; background: none; border: none;")
+        self.link_button.clicked.connect(self._open_class_config_file)
+
+        row.addWidget(self.link_button, alignment=Qt.AlignCenter)  
+        parent_layout.addLayout(row)
+
+    def _open_class_config_file(self):
+        """
+        Opens the JSON file in the system default editor or explorer.
+        """
+
+        from ...control.config_manager import config
+        import sys
+        import subprocess
+        json_path = config.getpath("FILE", "class_definitions") # Assuming LabelConfig can provide this
+
+
+        if not os.path.exists(json_path):
+            QMessageBox.warning(self, "File not found", f"Could not find JSON file:\n{json_path}")
+            return
+
+        try:
+            if sys.platform.startswith("darwin"):  # macOS
+                subprocess.call(("open", json_path))
+            elif os.name == "nt":  # Windows
+                os.startfile(json_path)
+            elif os.name == "posix":  # Linux
+                subprocess.call(("xdg-open", json_path))
+            else:
+                QMessageBox.information(self, "Info", f"JSON file located at:\n{json_path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Could not open file:\n{json_path}\n\n{e}")
