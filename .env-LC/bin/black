@@ -1,6 +1,0 @@
-#!/home/dperrett/Documents/horse_project/Repos/labelCloud/.env-LC/bin/python
-import sys
-from black import patched_main
-if __name__ == '__main__':
-    sys.argv[0] = sys.argv[0].removesuffix('.exe')
-    sys.exit(patched_main())
