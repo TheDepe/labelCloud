@@ -10,6 +10,7 @@
 *.qt_for_python
 *.bin
 .idea
+*.env*
 
 !labelCloud/resources/examples/exemplary.ply
 !labelCloud/resources/examples/exemplary.json
