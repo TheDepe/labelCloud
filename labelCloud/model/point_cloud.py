@@ -139,7 +139,8 @@ class PointCloud(object):
                 self.faces,
                 GL.GL_STATIC_DRAW
             )
-    GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, 0)
+        GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, 0)
+
     @property
     def label_colors(self) -> npt.NDArray[np.float32]:
         """blend the points with label color map"""
