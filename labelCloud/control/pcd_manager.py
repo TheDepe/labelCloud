@@ -165,8 +165,7 @@ class PointCloudManger(object):
         assert (self.pointcloud is not None or self.mesh is not None)
 
         for label_class in LabelConfig().classes:
-
-            if label_class.session:
+            if label_class.session and label_class.name.lower() != "unassigned":
                 self.view.current_class_dropdown.addItem(label_class.name)
 
     def get_labels_from_file(self) -> List[Union[BBox,Point]]:
@@ -261,30 +260,59 @@ class PointCloudManger(object):
         rotation_matrix = o3d.geometry.get_rotation_matrix_from_axis_angle(
             np.multiply(axis, angle)
         )
-        o3d_pointcloud = Open3DHandler.to_open3d_point_cloud(self.pointcloud)
-        o3d_pointcloud.rotate(rotation_matrix, center=tuple(rotation_point))
-        o3d_pointcloud.translate([0, 0, -rotation_point[2]])
         logging.info("Rotating point cloud...")
         print_column(["Angle:", str(np.round(angle, 3))])
         print_column(["Axis:", str(np.round(axis, 3))])
         print_column(["Point:", str(np.round(rotation_point, 3))], last=True)
 
-        # Check if pointcloud is upside-down
-        if abs(self.pointcloud.pcd_mins[2]) > self.pointcloud.pcd_maxs[2]:
-            logging.warning("Point cloud is upside down, rotating ...")
-            o3d_pointcloud.rotate(
-                o3d.geometry.get_rotation_matrix_from_xyz([np.pi, 0, 0]),
-                center=(0, 0, 0),
-            )
+        is_upside_down = abs(self.pointcloud.pcd_mins[2]) > self.pointcloud.pcd_maxs[2]
 
-        points, colors = Open3DHandler.to_point_cloud(o3d_pointcloud)
+        # Read as triangle mesh so triangle connectivity is preserved if present
+        o3d_mesh = o3d.io.read_triangle_mesh(str(self.pcd_path))
+        if o3d_mesh.has_triangles():
+            o3d_mesh.rotate(rotation_matrix, center=tuple(rotation_point))
+            o3d_mesh.translate([0, 0, -rotation_point[2]])
+            if is_upside_down:
+                logging.warning("Point cloud is upside down, rotating ...")
+                o3d_mesh.rotate(
+                    o3d.geometry.get_rotation_matrix_from_xyz([np.pi, 0, 0]),
+                    center=(0, 0, 0),
+                )
+            o3d.io.write_triangle_mesh(str(self.pcd_path), o3d_mesh)
+            points = np.asarray(o3d_mesh.vertices).astype("float32")
+            colors = (
+                np.asarray(o3d_mesh.vertex_colors).astype("float32")
+                if o3d_mesh.has_vertex_colors()
+                else None
+            )
+        else:
+            # Plain point cloud — existing behaviour
+            o3d_pointcloud = Open3DHandler.to_open3d_point_cloud(self.pointcloud)
+            o3d_pointcloud.rotate(rotation_matrix, center=tuple(rotation_point))
+            o3d_pointcloud.translate([0, 0, -rotation_point[2]])
+            if is_upside_down:
+                logging.warning("Point cloud is upside down, rotating ...")
+                o3d_pointcloud.rotate(
+                    o3d.geometry.get_rotation_matrix_from_xyz([np.pi, 0, 0]),
+                    center=(0, 0, 0),
+                )
+            points, colors = Open3DHandler.to_point_cloud(o3d_pointcloud)
+            self.pointcloud = PointCloud(
+                self.pcd_path, points, colors, self.pointcloud.labels
+            )
+            self.pointcloud.to_file()
+            return
+
         self.pointcloud = PointCloud(
             self.pcd_path,
             points,
             colors,
             self.pointcloud.labels,
         )
-        self.pointcloud.to_file()
+
+    def toggle_pointcloud_invert_colors(self) -> None:
+        if self.pointcloud is not None and self.pointcloud.colors is not None:
+            self.pointcloud.toggle_invert_colors()
 
     def assign_point_label_in_box(self, box: BBox) -> None:
         assert self.pointcloud is not None

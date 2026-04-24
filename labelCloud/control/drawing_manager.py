@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, List, Union
 
 from ..labeling_strategies import BaseLabelingStrategy
 from .bbox_controller import BoundingBoxController
@@ -11,13 +11,17 @@ if TYPE_CHECKING:
 
 
 class DrawingManager(object):
-    def __init__(self, bbox_controller: BoundingBoxController, pick_point_controller: PickPointController, pick_flow_controller : PickFlowController ) -> None:
+    def __init__(self, bbox_controller: BoundingBoxController, pick_point_controller: PickPointController, pick_flow_controller: PickFlowController) -> None:
         self.view: "GUI"
         self.bbox_controller = bbox_controller
         self.drawing_strategy: Union[BaseLabelingStrategy, None] = None
         self.pick_point_controller = pick_point_controller
         self.pick_flow_controller = pick_flow_controller
-        self.index = 1
+
+        # Pick flow queue — classes not yet assigned for the current PCD.
+        # Persists across toggle off/on within the same PCD so the flow resumes.
+        self.pending_classes: List[str] = []
+        self.pick_flow_active: bool = False
 
     def set_view(self, view: "GUI") -> None:
         self.view = view
@@ -41,7 +45,6 @@ class DrawingManager(object):
             if self.is_active():
                 self.reset()
                 logging.info("Resetted previous active drawing mode!")
-
             self.drawing_strategy = strategy
 
     def register_point(
@@ -54,20 +57,21 @@ class DrawingManager(object):
             self.drawing_strategy.register_tmp_point(world_point)
         else:
             self.drawing_strategy.register_point(world_point)
-            
-            # If the strategy is a point picking strategy, we add the point to the pick point controller
-            if self.drawing_strategy.__class__.__name__== "PickingPointStrategy" and self.drawing_strategy.pick_flow: # Checking if we in pick point or pick flow 
-                self.pick_point_controller.add_point(self.drawing_strategy.get_point())
+
+            if self.drawing_strategy.__class__.__name__ == "PickingPointStrategy" and self.drawing_strategy.pick_flow:
+                point = self.drawing_strategy.get_point()
+                # Assign classname from the front of the pending queue BEFORE adding
+                if self.pending_classes:
+                    point.classname = self.pending_classes[0]
+                self.pick_point_controller.add_point(point)
                 self.move_to_next_class()
-     
-            elif(self.drawing_strategy.__class__.__name__== "PickingPointStrategy"):
+
+            elif self.drawing_strategy.__class__.__name__ == "PickingPointStrategy":
                 self.pick_point_controller.add_point(self.drawing_strategy.get_point())
                 self.drawing_strategy.reset()
-                self.drawing_strategy = None 
-                
-            elif (
-                self.drawing_strategy.is_bbox_finished()
-            ):  # Register bbox to bbox controller when finished
+                self.drawing_strategy = None
+
+            elif self.drawing_strategy.is_bbox_finished():
                 self.bbox_controller.add_bbox(self.drawing_strategy.get_bbox())
                 self.drawing_strategy.reset()
                 self.drawing_strategy = None
@@ -81,36 +85,71 @@ class DrawingManager(object):
             self.drawing_strategy.reset()  # type: ignore
             if not points_only:
                 self.drawing_strategy = None
-                
-    
-    def undo(self): # called when user pressess ctrl+z
-        
-        if self.index > 1:
-            self.index -= 1
-            self.view.set_label_flow_status(self.view.current_class_dropdown.itemText(self.index + 1))
-            
-            
+        self.pick_flow_active = False
 
+    def reset_pick_flow_state(self) -> None:
+        """Fully clear pick flow state. Call when loading a new PCD."""
+        self.pending_classes = []
+        self.pick_flow_active = False
 
-    def move_to_next_class(self, skip: bool = False): # Move  to next class in pick flow mode
-        # only move if valid index
+    def activate_pick_flow(self) -> None:
+        """Initialise or resume the pending-class queue.
 
-    
-        self.index += 1
-        if self.index < self.view.current_class_dropdown.count():
-            # set next class
+        The dropdown is intentionally NOT managed here — it continues to work
+        normally, reflecting whatever point is currently selected.  Only the
+        'Next class' status label is owned by the pick flow.
+        """
+        self.pick_flow_active = True
+        if not self.pending_classes:
+            # Build the queue: all session classes that have not yet been assigned.
+            all_classes = [
+                self.view.current_class_dropdown.itemText(i)
+                for i in range(self.view.current_class_dropdown.count())
+            ]
+            assigned = {
+                item.get_classname()
+                for item in self.view.controller.unified_annotation_controller.items
+            }
+            self.pending_classes = [c for c in all_classes if c not in assigned]
+        self._update_flow_display()
 
-            #If skip do not change the label
-            if not skip:
-                self.view.current_class_dropdown.setCurrentIndex(self.index)
+    def _update_flow_display(self) -> None:
+        """Update the 'Next class' status label from pending_classes[0]."""
+        if self.pending_classes:
+            self.view.set_label_flow_status(self.pending_classes[0])
+            self.view.gl_widget.set_current_label(self.pending_classes[0])
+        else:
+            self.view.set_label_flow_status("")
+            self.view.gl_widget.set_current_label(None)
 
-            self.view.gl_widget.set_current_label(self.view.current_class_dropdown.itemText(self.index))
-            self.view.set_label_flow_status(self.view.current_class_dropdown.itemText(self.index + 1))
-                
-            if self.index+1 == self.view.current_class_dropdown.count():
-                self.index = 1
-                self.reset() 
-    
+    def restore_class_to_front(self, classname: str) -> None:
+        """Put a class back at the front of the queue (Ctrl+Z undo)."""
+        if classname and classname not in self.pending_classes:
+            self.pending_classes.insert(0, classname)
+            self._update_flow_display()
 
+    def restore_class_to_back(self, classname: str) -> None:
+        """Put a class back at the end of the queue (explicit delete)."""
+        if classname and classname not in self.pending_classes:
+            self.pending_classes.append(classname)
+            self._update_flow_display()
 
-    
+    def move_to_next_class(self, skip: bool = False) -> None:
+        """Advance the pick flow. Removes assigned classes; rotates skipped ones to the end."""
+        if not self.pending_classes:
+            self.reset()
+            return
+
+        current_class = self.pending_classes.pop(0)
+
+        if skip:
+            # Not assigned yet — move to end so it cycles around
+            self.pending_classes.append(current_class)
+        # else: assigned — do not re-add
+
+        if self.pending_classes:
+            self._update_flow_display()
+        else:
+            self.view.set_label_flow_status("")
+            self.view.gl_widget.set_current_label(None)
+            self.reset()

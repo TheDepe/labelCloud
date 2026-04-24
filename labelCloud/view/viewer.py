@@ -142,8 +142,6 @@ class GLWidget(QtOpenGL.QGLWidget):
             self.pcd_manager.pointcloud.draw_pointcloud_()  # type: ignore
 
         if self.mesh is not None and self.mesh.has_buffers:
-            print(f"DEBUG || Drawing mesh with {len(self.mesh.vertices)} vertices "
-                f"and {len(self.mesh.triangles)} faces.")  # .triangles not .faces
             self.mesh.draw()
 
         # Get actual matrices for click unprojection

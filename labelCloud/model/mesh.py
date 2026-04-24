@@ -29,6 +29,7 @@ class Mesh:
         self.normal_vbo: Optional[int] = None
         self.color_vbo: Optional[int] = None
         self.ibo: Optional[int] = None
+        self.brightness: float = 0.5
 
         logging.info(f"Loaded mesh from {path.name}: "
                      f"{len(vertices)} vertices, {len(triangles)} triangles.")
@@ -92,14 +93,30 @@ class Mesh:
         stride = 3 * SIZE_OF_FLOAT
         n_indices = self.triangles.size
 
-        print("DEBUG || A")
         GL.glEnable(GL.GL_LIGHTING)
+
+        # Near-zero global ambient so unlit faces are dark, maximising surface contrast
+        GL.glLightModelfv(GL.GL_LIGHT_MODEL_AMBIENT, [0.05, 0.05, 0.05, 1.0])
+
+        b = self.brightness
+        # Key light: strong, from upper-front-right
         GL.glEnable(GL.GL_LIGHT0)
         GL.glLightfv(GL.GL_LIGHT0, GL.GL_POSITION, [1.0, 1.0, 2.0, 0.0])
+        GL.glLightfv(GL.GL_LIGHT0, GL.GL_AMBIENT,  [b * 0.3, b * 0.3, b * 0.3, 1.0])
+        GL.glLightfv(GL.GL_LIGHT0, GL.GL_DIFFUSE,  [1.0, 1.0, 1.0, 1.0])
+        GL.glLightfv(GL.GL_LIGHT0, GL.GL_SPECULAR, [0.2, 0.2, 0.2, 1.0])
+
+        # Fill light: dimmer, from lower-back-left; softens pure-black shadows
+        # without flattening the overall shading contrast
+        GL.glEnable(GL.GL_LIGHT1)
+        GL.glLightfv(GL.GL_LIGHT1, GL.GL_POSITION, [-1.0, -1.0, -0.5, 0.0])
+        GL.glLightfv(GL.GL_LIGHT1, GL.GL_AMBIENT,  [0.0, 0.0, 0.0, 1.0])
+        GL.glLightfv(GL.GL_LIGHT1, GL.GL_DIFFUSE,  [0.35, 0.35, 0.35, 1.0])
+        GL.glLightfv(GL.GL_LIGHT1, GL.GL_SPECULAR, [0.0, 0.0, 0.0, 1.0])
+
         GL.glEnable(GL.GL_COLOR_MATERIAL)
         GL.glColorMaterial(GL.GL_FRONT_AND_BACK, GL.GL_AMBIENT_AND_DIFFUSE)
 
-        print("DEBUG || B")
         GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.vertex_vbo)
         GL.glEnableClientState(GL.GL_VERTEX_ARRAY)
         GL.glVertexPointer(3, GL.GL_FLOAT, stride, None)
@@ -108,29 +125,21 @@ class Mesh:
         GL.glEnableClientState(GL.GL_NORMAL_ARRAY)
         GL.glNormalPointer(GL.GL_FLOAT, stride, None)
 
-        print("DEBUG || C")
         GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.color_vbo)
         GL.glEnableClientState(GL.GL_COLOR_ARRAY)
         GL.glColorPointer(3, GL.GL_FLOAT, stride, None)
 
-        print("DEBUG || D")
-        print(f"DEBIG || {self.ibo=}")
         GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, self.ibo)
         GL.glDrawElements(GL.GL_TRIANGLES, n_indices, GL.GL_UNSIGNED_INT, None)
 
-        print("DEBUG || E")
         GL.glDisableClientState(GL.GL_VERTEX_ARRAY)
         GL.glDisableClientState(GL.GL_COLOR_ARRAY)
         GL.glDisableClientState(GL.GL_NORMAL_ARRAY)
         GL.glBindBuffer(GL.GL_ARRAY_BUFFER, 0)
         GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, 0)
+        GL.glDisable(GL.GL_LIGHT1)
         GL.glDisable(GL.GL_LIGHTING)
         GL.glDisable(GL.GL_COLOR_MATERIAL)
-        print("DEBUG || F")
-        logging.info(f"draw() called — vertex_vbo={self.vertex_vbo}, "
-                 f"normal_vbo={self.normal_vbo}, ibo={self.ibo}, "
-                 f"n_indices={self.triangles.size}, "
-                 f"n_vertices={len(self.vertices)}")
 
     @classmethod
     def from_file(cls, path: Path) -> Optional["Mesh"]:

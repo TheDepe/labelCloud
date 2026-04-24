@@ -50,7 +50,7 @@ class PickingPointStrategy(BaseLabelingStrategy):
         self.pick_flow = pick_flow
 
         if pick_flow:
-            self.view.set_label_flow_status(self.view.current_class_dropdown.itemText(2))
+            self.view.controller.drawing_mode.activate_pick_flow()
 
     def register_point(self, new_point: Point3D) -> None:
         if not self.tmp_p1 == None :

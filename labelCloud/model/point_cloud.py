@@ -69,6 +69,7 @@ class PointCloud(object):
             self.mix_ratio = config.getfloat("POINTCLOUD", "label_color_mix_ratio")
 
         self.vbo = None
+        self.invert_colors: bool = False
         self.center: Point3D = tuple(np.sum(points[:, i]) / len(points) for i in range(3))  # type: ignore
         self.pcd_mins: npt.NDArray[np.float32] = np.amin(points, axis=0)
         self.pcd_maxs: npt.NDArray[np.float32] = np.amax(points, axis=0)
@@ -109,21 +110,27 @@ class PointCloud(object):
         self.print_details()
         end_section()
 
+    def toggle_invert_colors(self) -> None:
+        self.invert_colors = not self.invert_colors
+
     @property
     def point_size(self) -> float:
         return config.getfloat("POINTCLOUD", "point_size")
 
     def create_buffers(self) -> None:
-        """Create 3 different buffers holding points, colors and label colors information"""
+        """Create VBOs for positions, colors, inverted colors, and label colors."""
         self.colors = cast(npt.NDArray[np.float32], self.colors)
         (
             self.position_vbo,
             self.color_vbo,
+            self.color_vbo_inverted,
             self.label_vbo,
-        ) = GL.glGenBuffers(3)
+        ) = GL.glGenBuffers(4)
+        inverted = (1.0 - self.colors).astype(np.float32)
         for data, vbo in [
             (self.points, self.position_vbo),
             (self.colors, self.color_vbo),
+            (inverted, self.color_vbo_inverted),
             (self.label_colors, self.label_vbo),
         ]:
             GL.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo)
@@ -371,6 +378,8 @@ class PointCloud(object):
         # Bind color buffer
         if self.color_with_label:
             color_vbo = self.label_vbo
+        elif self.invert_colors:
+            color_vbo = self.color_vbo_inverted
         else:
             color_vbo = self.color_vbo
         GL.glBindBuffer(GL.GL_ARRAY_BUFFER, color_vbo)
@@ -387,7 +396,6 @@ class PointCloud(object):
 
 
     def draw_pointcloud_(self) -> None:
-
         self.set_gl_background()
         stride = 3 * SIZE_OF_FLOAT
 
@@ -405,6 +413,8 @@ class PointCloud(object):
         # Bind color buffer
         if self.color_with_label:
             color_vbo = self.label_vbo
+        elif self.invert_colors:
+            color_vbo = self.color_vbo_inverted
         else:
             color_vbo = self.color_vbo
         GL.glBindBuffer(GL.GL_ARRAY_BUFFER, color_vbo)
@@ -531,10 +541,10 @@ class PointCloud(object):
                     [np.sin(rz),  np.cos(rz), 0],
                     [0, 0, 1]], dtype=np.float32)
 
-        # glRotate calls are applied in sequence rot_x, rot_y, rot_z in your set_gl_background,
-        # which corresponds to R = Rz @ Ry @ Rx if we want the same net rotation depending on convention.
-        # Using Rx then Ry then Rz (row-major math) is equivalent to R = Rz @ Ry @ Rx
-        R = Rz @ Ry @ Rx
+        # OpenGL right-multiplies: M = ... * Rx * Ry * Rz * T_neg
+        # Applied to a column vector v: (Rx @ Ry @ Rz) @ v = Rx @ (Ry @ (Rz @ v))
+        # i.e. Rz acts on v first, then Ry, then Rx — matching glRotate(rot_x), glRotate(rot_y), glRotate(rot_z).
+        R = Rx @ Ry @ Rz
         return R
 
 
