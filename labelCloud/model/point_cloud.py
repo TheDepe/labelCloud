@@ -52,6 +52,7 @@ class PointCloud(object):
         points: npt.NDArray[np.float32],
         colors: Optional[np.ndarray] = None,
         segmentation_labels: Optional[npt.NDArray[np.int8]] = None,
+        faces: Optional[npt.NDArray[np.uint32]] = None,
         init_translation: Optional[Tuple[float, float, float]] = None,
         init_rotation: Optional[Tuple[float, float, float]] = None,
         write_buffer: bool = True,
@@ -60,7 +61,7 @@ class PointCloud(object):
         self.path = path
         self.points = points
         self.colors = colors if type(colors) == np.ndarray and len(colors) > 0 else None
-
+        self.faces = faces
         self.labels = None
         if LabelConfig().type == LabelingMode.SEMANTIC_SEGMENTATION:
             self.labels = segmentation_labels
@@ -68,6 +69,7 @@ class PointCloud(object):
             self.mix_ratio = config.getfloat("POINTCLOUD", "label_color_mix_ratio")
 
         self.vbo = None
+        self.invert_colors: bool = False
         self.center: Point3D = tuple(np.sum(points[:, i]) / len(points) for i in range(3))  # type: ignore
         self.pcd_mins: npt.NDArray[np.float32] = np.amin(points, axis=0)
         self.pcd_maxs: npt.NDArray[np.float32] = np.amax(points, axis=0)
@@ -75,6 +77,8 @@ class PointCloud(object):
             self.center, self.pcd_mins, self.pcd_maxs
         )
         self.init_rotation: Rotations3D = init_rotation or tuple([0, 0, 0])  # type: ignore
+
+        self.render_mode = "mesh"  # or "mesh"
 
         # Point cloud transformations
         self.trans_x, self.trans_y, self.trans_z = self.init_translation
@@ -106,26 +110,43 @@ class PointCloud(object):
         self.print_details()
         end_section()
 
+    def toggle_invert_colors(self) -> None:
+        self.invert_colors = not self.invert_colors
+
     @property
     def point_size(self) -> float:
         return config.getfloat("POINTCLOUD", "point_size")
 
     def create_buffers(self) -> None:
-        """Create 3 different buffers holding points, colors and label colors information"""
+        """Create VBOs for positions, colors, inverted colors, and label colors."""
         self.colors = cast(npt.NDArray[np.float32], self.colors)
         (
             self.position_vbo,
             self.color_vbo,
+            self.color_vbo_inverted,
             self.label_vbo,
-        ) = GL.glGenBuffers(3)
+        ) = GL.glGenBuffers(4)
+        inverted = (1.0 - self.colors).astype(np.float32)
         for data, vbo in [
             (self.points, self.position_vbo),
             (self.colors, self.color_vbo),
+            (inverted, self.color_vbo_inverted),
             (self.label_colors, self.label_vbo),
         ]:
             GL.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo)
             GL.glBufferData(GL.GL_ARRAY_BUFFER, data.nbytes, data, GL.GL_DYNAMIC_DRAW)
             GL.glBindBuffer(GL.GL_ARRAY_BUFFER, 0)
+
+        if self.faces is not None:
+            self.index_vbo = GL.glGenBuffers(1)
+            GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, self.index_vbo)
+            GL.glBufferData(
+                GL.GL_ELEMENT_ARRAY_BUFFER,
+                self.faces.nbytes,
+                self.faces,
+                GL.GL_STATIC_DRAW
+            )
+        GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, 0)
 
     @property
     def label_colors(self) -> npt.NDArray[np.float32]:
@@ -182,6 +203,7 @@ class PointCloud(object):
             points,
             colors,
             labels,
+            None,
             init_translation,
             init_rotation,
             write_buffer,
@@ -356,6 +378,8 @@ class PointCloud(object):
         # Bind color buffer
         if self.color_with_label:
             color_vbo = self.label_vbo
+        elif self.invert_colors:
+            color_vbo = self.color_vbo_inverted
         else:
             color_vbo = self.color_vbo
         GL.glBindBuffer(GL.GL_ARRAY_BUFFER, color_vbo)
@@ -372,7 +396,6 @@ class PointCloud(object):
 
 
     def draw_pointcloud_(self) -> None:
-
         self.set_gl_background()
         stride = 3 * SIZE_OF_FLOAT
 
@@ -390,6 +413,8 @@ class PointCloud(object):
         # Bind color buffer
         if self.color_with_label:
             color_vbo = self.label_vbo
+        elif self.invert_colors:
+            color_vbo = self.color_vbo_inverted
         else:
             color_vbo = self.color_vbo
         GL.glBindBuffer(GL.GL_ARRAY_BUFFER, color_vbo)
@@ -402,6 +427,45 @@ class PointCloud(object):
         # Release the buffer binding
         GL.glBindBuffer(GL.GL_ARRAY_BUFFER, 0)
 
+        
+    def draw_mesh(self) -> None:
+        if self.faces is None:
+            return
+
+        self.set_gl_background()
+        stride = 3 * SIZE_OF_FLOAT
+
+        # Enable depth test (important for meshes)
+        GL.glEnable(GL.GL_DEPTH_TEST)
+
+        # Vertex positions
+        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.position_vbo)
+        GL.glEnableClientState(GL.GL_VERTEX_ARRAY)
+        GL.glVertexPointer(3, GL.GL_FLOAT, stride, None)
+
+        # Colors
+        color_vbo = self.label_vbo if self.color_with_label else self.color_vbo
+        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, color_vbo)
+        GL.glEnableClientState(GL.GL_COLOR_ARRAY)
+        GL.glColorPointer(3, GL.GL_FLOAT, stride, None)
+
+        # Bind index buffer
+        GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, self.index_vbo)
+
+        # Draw triangles
+        GL.glDrawElements(
+            GL.GL_TRIANGLES,
+            self.faces.size,
+            GL.GL_UNSIGNED_INT,
+            None
+        )
+
+        # Cleanup
+        GL.glDisableClientState(GL.GL_VERTEX_ARRAY)
+        GL.glDisableClientState(GL.GL_COLOR_ARRAY)
+        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, 0)
+        GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, 0)
+        
     def reset_perspective(self) -> None:
         self.trans_x, self.trans_y, self.trans_z = self.init_rotation
         self.rot_x, self.rot_y, self.rot_z = self.init_rotation
@@ -477,10 +541,10 @@ class PointCloud(object):
                     [np.sin(rz),  np.cos(rz), 0],
                     [0, 0, 1]], dtype=np.float32)
 
-        # glRotate calls are applied in sequence rot_x, rot_y, rot_z in your set_gl_background,
-        # which corresponds to R = Rz @ Ry @ Rx if we want the same net rotation depending on convention.
-        # Using Rx then Ry then Rz (row-major math) is equivalent to R = Rz @ Ry @ Rx
-        R = Rz @ Ry @ Rx
+        # OpenGL right-multiplies: M = ... * Rx * Ry * Rz * T_neg
+        # Applied to a column vector v: (Rx @ Ry @ Rz) @ v = Rx @ (Ry @ (Rz @ v))
+        # i.e. Rz acts on v first, then Ry, then Rx — matching glRotate(rot_x), glRotate(rot_y), glRotate(rot_z).
+        R = Rx @ Ry @ Rz
         return R
 
 

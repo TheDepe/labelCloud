@@ -45,6 +45,8 @@ class ClassList(QWidget):
         self.session_buttons.buttonClicked.connect(self.on_state_changed)
 
         for class_label in LabelConfig().classes:
+            if class_label.name.lower() == "unassigned":
+                continue
             self.add_label(
                 class_label.id, class_label.name, rgb_to_hex(class_label.color),  class_label.session
             )

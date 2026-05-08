@@ -126,7 +126,8 @@ class StartupDialog(QDialog):
 
         self.default_label = QComboBox()
         self.default_label.addItems(
-            [class_label.name for class_label in LabelConfig().classes]
+            [class_label.name for class_label in LabelConfig().classes
+             if class_label.name.lower() != "unassigned"]
         )
         self.default_label.setCurrentText(LabelConfig().get_default_class_name())
         row.addWidget(self.default_label, 2)
@@ -207,7 +208,8 @@ class StartupDialog(QDialog):
             LabelConfig().type = self.select_labeling_mode.selected_labeling_mode
             LabelConfig().set_label_format(self.label_export_format.currentText())
 
-        LabelConfig().classes = self.label_list.get_class_configs()
+        reserved = [c for c in LabelConfig().classes if c.name.lower() == "unassigned"]
+        LabelConfig().classes = reserved + self.label_list.get_class_configs()
 
         LabelConfig().set_default_class(self.default_label.currentText())
             

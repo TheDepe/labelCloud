@@ -133,6 +133,7 @@ class Controller:
         """Resets the controllers and bounding boxes from the current screen."""
         self.unified_annotation_controller.reset()
         self.drawing_mode.reset()
+        self.drawing_mode.reset_pick_flow_state()
         self.align_mode.reset()
     
 
@@ -147,8 +148,8 @@ class Controller:
             item = self.unified_annotation_controller.get_active_item()
 
             if isinstance(item, Point):
-                self.pcd_manager.pointcloud.focus_on_point(item.point)  # type: ignoreq
-        
+                self.pcd_manager.pointcloud.focus_on_point(item.point)  # type: ignore
+
             self.view.status_manager.update_status(
                 f"Selected: {self.unified_annotation_controller.get_active_item().get_classname()}",
                 mode=Mode.CORRECTION
@@ -329,9 +330,11 @@ class Controller:
         if (a0.key() == QtCore.Qt.Key_Z) and (a0.modifiers() & QtCore.Qt.ControlModifier): #
             # Ctrl+Z => Undo
             print("Undo last action")
+            items = self.unified_annotation_controller.items
+            last_classname = items[-1].get_classname() if items else None
             self.unified_annotation_controller.delete_last_item()
-            if self.drawing_mode.drawing_strategy.__class__.__name__== "PickingPointStrategy" and self.drawing_mode.drawing_strategy.pick_flow:
-                self.drawing_mode.undo()
+            if self.drawing_mode.pick_flow_active and last_classname:
+                self.drawing_mode.restore_class_to_front(last_classname)
             return
         
         # Reset position to intial value
@@ -348,6 +351,9 @@ class Controller:
             logging.info("Reseted position to default.")
 
         elif a0.key() == Keys.Key_Delete:  # Delete active bbox
+            item = self.unified_annotation_controller.get_active_item()
+            if isinstance(item, Point) and self.drawing_mode.pick_flow_active:
+                self.drawing_mode.restore_class_to_back(item.get_classname())
             self.unified_annotation_controller.delete_bbox()
 
         # Save labels to file
@@ -516,6 +522,9 @@ class Controller:
     
     def delete_current(self) -> None:
         """Deletes the currently selected bounding box or point."""
+        item = self.unified_annotation_controller.get_active_item()
+        if isinstance(item, Point) and self.drawing_mode.pick_flow_active:
+            self.drawing_mode.restore_class_to_back(item.get_classname())
         self.unified_annotation_controller.delete_bbox()
         self.update_all() 
 

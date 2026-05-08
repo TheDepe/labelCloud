@@ -177,6 +177,9 @@ class GUI(QtWidgets.QMainWindow):
 
         #Slider for point size
         self.point_size_slider: QtWidgets.QSlider
+        self.brightness_slider: QtWidgets.QSlider
+        self.label_brightness_value: QtWidgets.QLabel
+        self.frame_flow_controls: QtWidgets.QFrame
 
         # bbox control section
         self.button_bbox_up: QtWidgets.QPushButton
@@ -366,11 +369,8 @@ class GUI(QtWidgets.QMainWindow):
             )
         )
         
-        self.button_pick_flow.clicked.connect(
-            lambda: self.controller.drawing_mode.set_drawing_strategy(
-                PickingPointStrategy(self, True)
-            )
-        )
+        self.button_pick_flow.toggled.connect(self._on_pick_flow_toggled)
+        self.button_pick_flow.toggled.connect(self.frame_flow_controls.setVisible)
         
         self.button_save_label.clicked.connect(self.controller.save)
 
@@ -429,6 +429,7 @@ class GUI(QtWidgets.QMainWindow):
 
         #slider for point size
         self.point_size_slider.valueChanged.connect(self.update_point_size)
+        self.brightness_slider.valueChanged.connect(self.update_mesh_brightness)
 
         self.button_skip_label.clicked.connect(self.controller.skip_label)
 
@@ -560,8 +561,16 @@ class GUI(QtWidgets.QMainWindow):
 
     # VISUALIZATION METHODS
 
-    def set_label_flow_status(self, status:str):
+    def set_label_flow_status(self, status: str) -> None:
         self.label_flow_status.setText(status)
+
+    def _on_pick_flow_toggled(self, checked: bool) -> None:
+        dm = self.controller.drawing_mode
+        if checked:
+            dm.set_drawing_strategy(PickingPointStrategy(self, True))
+        else:
+            dm.reset()
+            self.set_label_flow_status("")
 
 
     def set_pcd_label(self, pcd_name: str) -> None:
@@ -711,6 +720,8 @@ class GUI(QtWidgets.QMainWindow):
             action.text() for action in self.actiongroup_default_class.actions()
         }
         for object_class in object_classes.difference(existing_classes):
+            if object_class.lower() == "unassigned":
+                continue
             action = self.actiongroup_default_class.addAction(
                 object_class
             )  # TODO: Add limiter for number of classes
@@ -811,6 +822,14 @@ class GUI(QtWidgets.QMainWindow):
         self.label_slider_value.setText(str(new_size))
 
         config_manager.update_point_size(new_size)
+
+    def update_mesh_brightness(self, value: int) -> None:
+        self.label_brightness_value.setText(str(value))
+        mesh = self.gl_widget.mesh
+        if mesh is not None:
+            mesh.brightness = value / 10.0
+        self.gl_widget.update()
+
 
       
 
