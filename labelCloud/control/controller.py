@@ -138,23 +138,20 @@ class Controller:
 
     def set_active(self, index: int) -> None:
         """Sets the active bounding box or point based on the index from the label list."""
-        if self.unified_annotation_controller.has_active_item():
-            self.unified_annotation_controller.set_active_item(index)
+        self.unified_annotation_controller.set_active_item(index)
 
+        if self.unified_annotation_controller.has_active_item():
             self.update_all()
-            
 
             item = self.unified_annotation_controller.get_active_item()
 
             if isinstance(item, Point):
-                self.pcd_manager.pointcloud.focus_on_point(item.point)  # type: ignoreq
-        
+                self.pcd_manager.pointcloud.focus_on_point(item.point)  # type: ignore
+
             self.view.status_manager.update_status(
                 f"Selected: {self.unified_annotation_controller.get_active_item().get_classname()}",
                 mode=Mode.CORRECTION
             )
-        else:
-            logging.warning("No active item to set.")
 
     # CORRECTION METHODS
     def set_crosshair(self) -> None:
@@ -384,8 +381,9 @@ class Controller:
                 # x rotate counterclockwise
                 self.bbox_controller.rotate_around_x()
         elif a0.key() == Keys.Key_N:
-            # x rotate clockwise
-            controller.rotate_around_x(clockwise=True)
+            if isinstance(controller, BoundingBoxController):
+                # x rotate clockwise
+                controller.rotate_around_x(clockwise=True)
         elif a0.key() == Keys.Key_W:
             # move backward
             controller.translate_along_y()
