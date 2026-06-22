@@ -244,7 +244,7 @@
             "name": "tip_of_head",
             "id": 42,
             "color": "#2592a3",
-            "session": true
+            "session": false
         },
         {
             "name": "rposterior",

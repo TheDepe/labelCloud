@@ -77,9 +77,6 @@ def set_keep_perspective(state: bool) -> None:
 def set_propagate_labels(state: bool) -> None:
     config.set("LABEL", "propagate_labels", str(state))
 
-def set_propagate_labels(state: bool) -> None:
-    config.set("LABEL", "propagate_labels", str(state))
-
 def set_scaled_point_size(state: bool) -> None:
     print("set_scaled_point_size called with:", state)
     config.set("USER_INTERFACE", "scaled_point_size", str(state))

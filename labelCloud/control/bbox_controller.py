@@ -234,7 +234,8 @@ class BoundingBoxController(object):
     def translate_along_x(
         self, distance: Optional[float] = None, left: bool = False
     ) -> None:
-        distance = distance or config.getfloat("LABEL", "std_translation")
+        if distance is None:
+            distance = config.getfloat("LABEL", "std_translation")
         if left:
             distance *= -1
 
@@ -248,7 +249,8 @@ class BoundingBoxController(object):
     def translate_along_y(
         self, distance: Optional[float] = None, forward: bool = False
     ) -> None:
-        distance = distance or config.getfloat("LABEL", "std_translation")
+        if distance is None:
+            distance = config.getfloat("LABEL", "std_translation")
         if forward:
             distance *= -1
 
@@ -262,7 +264,8 @@ class BoundingBoxController(object):
     def translate_along_z(
         self, distance: Optional[float] = None, down: bool = False
     ) -> None:
-        distance = distance or config.getfloat("LABEL", "std_translation")
+        if distance is None:
+            distance = config.getfloat("LABEL", "std_translation")
         if down:
             distance *= -1
 

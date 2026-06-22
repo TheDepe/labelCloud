@@ -200,6 +200,9 @@
        <property name="decimals">
         <number>4</number>
        </property>
+       <property name="minimum">
+        <double>0.001000000000000</double>
+       </property>
        <property name="singleStep">
         <double>0.010000000000000</double>
        </property>
@@ -437,13 +440,16 @@ Bounding Box Parameter</string>
         <string>Standard step for translating the bounding box (meter).</string>
        </property>
        <property name="decimals">
-        <number>3</number>
+        <number>4</number>
+       </property>
+       <property name="minimum">
+        <double>0.001000000000000</double>
        </property>
        <property name="maximum">
         <double>500.000000000000000</double>
        </property>
        <property name="singleStep">
-        <double>0.100000000000000</double>
+        <double>0.010000000000000</double>
        </property>
       </widget>
      </item>
