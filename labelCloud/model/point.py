@@ -79,8 +79,7 @@ class Point(object):
         if highlighted:
             point_color = self.HIGHLIGHTED_COLOR
         # Import for adjustemnt of point size.
-        point_size = min(config.getfloat("POINTCLOUD", "POINT_SIZE") * 15, 80) if highlighted else min(config.getfloat("POINTCLOUD", "POINT_SIZE") * 10, 70)
-        oglhelper.draw_points([self.point], color=Color3f.to_rgba(point_color), point_size=point_size)
+        oglhelper.draw_points([self.point], color=Color3f.to_rgba(point_color), point_size=min(config.getfloat("POINTCLOUD", "POINT_SIZE") * 2.5, 20))
         GL.glPopMatrix()
         
 
