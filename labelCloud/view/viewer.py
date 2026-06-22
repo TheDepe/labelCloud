@@ -50,7 +50,7 @@ class GLWidget(QtOpenGL.QGLWidget):
         )  # set for helper functions
 
         self.pcd_manager: PointCloudManger = None  # type: ignore
-        self.bbox_controller: BoundingBoxController = None  # type: ignore
+        self.bbox_controller = None  # type: ignore
         self.unified_annotation_controller: UnifiedAnnotationController = None
  
 
@@ -133,57 +133,56 @@ class GLWidget(QtOpenGL.QGLWidget):
     def paintGL(self) -> None:
         GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
         GL.glPushMatrix()  # push the current matrix to the current stack
+        try:
+            if config.getboolean("USER_INTERFACE", "scaled_point_size"):
+                # Draw point cloud
+                self.pcd_manager.pointcloud.draw_pointcloud()  # type: ignore
+            else:
+                # Draw point cloud
+                self.pcd_manager.pointcloud.draw_pointcloud_()  # type: ignore
 
-        if config.getboolean("USER_INTERFACE", "scaled_point_size"):
-            # Draw point cloud
-            self.pcd_manager.pointcloud.draw_pointcloud()  # type: ignore
-        else:
-            # Draw point cloud
-            self.pcd_manager.pointcloud.draw_pointcloud_()  # type: ignore
+            if self.mesh is not None and self.mesh.has_buffers:
+                self.mesh.draw()
 
-        if self.mesh is not None and self.mesh.has_buffers:
-            self.mesh.draw()
+            # Get actual matrices for click unprojection
+            self.modelview = GL.glGetDoublev(GL.GL_MODELVIEW_MATRIX)
+            self.projection = GL.glGetDoublev(GL.GL_PROJECTION_MATRIX)
 
-        # Get actual matrices for click unprojection
-        self.modelview = GL.glGetDoublev(GL.GL_MODELVIEW_MATRIX)
-        self.projection = GL.glGetDoublev(GL.GL_PROJECTION_MATRIX)
+            with ignore_depth_mask():  # Do not write decoration and preview elements in depth buffer
+                if config.getboolean("USER_INTERFACE", "show_floor"):
+                    oglhelper.draw_xy_plane(self.pcd_manager.pointcloud)  # type: ignore
 
-        with ignore_depth_mask():  # Do not write decoration and preview elements in depth buffer
-            if config.getboolean("USER_INTERFACE", "show_floor"):
-                oglhelper.draw_xy_plane(self.pcd_manager.pointcloud)  # type: ignore
-            
-            # Draw origin axes here
-            self.draw_origin()
+                # Draw origin axes here
+                self.draw_origin()
 
-            # Draw crosshair/ cursor in 3D world
-            if self.crosshair_pos:
-                cx, cy, cz = self.get_world_coords(*self.crosshair_pos, correction=True)
-                oglhelper.draw_crosshair(cx, cy, cz, color=self.crosshair_col)
+                # Draw crosshair/ cursor in 3D world
+                if self.crosshair_pos:
+                    cx, cy, cz = self.get_world_coords(*self.crosshair_pos, correction=True)
+                    oglhelper.draw_crosshair(cx, cy, cz, color=self.crosshair_col)
 
-            if self.drawing_mode.has_preview():
-                self.drawing_mode.draw_preview()
+                if self.drawing_mode.has_preview():
+                    self.drawing_mode.draw_preview()
 
-            if self.align_mode is not None:
-                if self.align_mode.is_active:
-                    self.align_mode.draw_preview()
+                if self.align_mode is not None:
+                    if self.align_mode.is_active:
+                        self.align_mode.draw_preview()
 
-            # Highlight selected side with filled rectangle
-            if len(self.selected_side_vertices) == 4:
-                oglhelper.draw_rectangles(
-                    self.selected_side_vertices, color=(0, 1, 0, 0.3)
-                )
-        
-        if self.unified_annotation_controller.has_active_item():
-            self.unified_annotation_controller.get_active_item().draw(highlighted=True) 
+                # Highlight selected side with filled rectangle
+                if len(self.selected_side_vertices) == 4:
+                    oglhelper.draw_rectangles(
+                        self.selected_side_vertices, color=(0, 1, 0, 0.3)
+                    )
 
-            if config.getboolean("USER_INTERFACE", "show_orientation") and isinstance(self.unified_annotation_controller.get_active_item(), BBox):
-                self.unified_annotation_controller.get_active_item().draw_orientation()
+            if self.unified_annotation_controller.has_active_item():
+                self.unified_annotation_controller.get_active_item().draw(highlighted=True)
 
+                if config.getboolean("USER_INTERFACE", "show_orientation") and isinstance(self.unified_annotation_controller.get_active_item(), BBox):
+                    self.unified_annotation_controller.get_active_item().draw_orientation()
 
-        for label in  self.unified_annotation_controller.items:
-            label.draw()
-
-        GL.glPopMatrix()  # restore the previous modelview matrix
+            for label in self.unified_annotation_controller.items:
+                label.draw()
+        finally:
+            GL.glPopMatrix()  # restore the previous modelview matrix
 
 
     # Translates the 2D cursor position from screen plane into 3D world space coordinates
